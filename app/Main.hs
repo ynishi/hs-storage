@@ -1,6 +1,7 @@
 module Main where
 
-import Lib
+import           Lib
+import           Opt
 
 main :: IO ()
-main = check
+main = runApp =<< parse
