@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Lib
+      Opt
   other-modules:
       Paths_hs_storage
   hs-source-dirs:
@@ -33,7 +34,9 @@ library
   build-depends:
       base >=4.7 && <5
     , foldl
+    , optparse-applicative
     , text
+    , time
     , turtle
   default-language: Haskell2010
 
@@ -48,7 +51,9 @@ executable hs-storage-exe
       base >=4.7 && <5
     , foldl
     , hs-storage
+    , optparse-applicative
     , text
+    , time
     , turtle
   default-language: Haskell2010
 
@@ -64,6 +69,8 @@ test-suite hs-storage-test
       base >=4.7 && <5
     , foldl
     , hs-storage
+    , optparse-applicative
     , text
+    , time
     , turtle
   default-language: Haskell2010
