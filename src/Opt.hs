@@ -1,9 +1,6 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns           #-}
 {-# LANGUAGE ScopedTypeVariables      #-}
 
--- https://qiita.com/kwhrstr1206/items/23085abfaf310d5fae2e
--- Command をGADTsして、Operationalでモナドにできないか？
 module Opt
   ( Opt(..)
   , Command(..)
@@ -12,7 +9,7 @@ module Opt
 
 import           Options.Applicative
 
-data Opt = Opt
+newtype Opt = Opt
   { optCommand :: Command
   }
 
@@ -20,7 +17,8 @@ data Command
   = Check { isDryrun :: Bool
           , diskOpt  :: Maybe String
           , poolOpt  :: Maybe String }
-  | Backup { isDryrun :: Bool }
+  | Backup { isDryrun   :: Bool
+           , backupPool :: String }
 
 parse :: IO Opt
 parse = execParser opts
@@ -40,7 +38,11 @@ optParser =
 
 backupOptions :: Parser Command
 backupOptions =
-  Backup <$> switch (long "dryrun" <> short 'r' <> help "whether to dry run")
+  Backup <$> switch (long "dryrun" <> short 'r' <> help "whether to dry run") <*>
+  strOption
+    (long "backupPool" <> short 'b' <> metavar "BACKUP_POOL" <>
+     value "backup-tank" <>
+     help "set target backup pool for zfs recv")
 
 checkOptions :: Parser Command
 checkOptions =

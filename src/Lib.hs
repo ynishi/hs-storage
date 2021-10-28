@@ -7,6 +7,8 @@ module Lib
 
 import qualified Control.Foldl      as F
 import           Control.Monad
+import qualified Data.List          as L
+import qualified Data.Maybe         as M
 import qualified Data.Text          as T
 import           Data.Time.Calendar
 import           Data.Time.Clock
@@ -18,24 +20,34 @@ import           Turtle.Prelude
 runApp :: Opt -> IO ()
 runApp opt = eval (optCommand opt)
 
-eval (Backup isDryrun) = do
+eval (Backup isDryrun backupPool) = do
   d <- Lib.date
-  pools <- run "zpool list -H -o name,health"
+  let dryOrDo = Dry isDryrun
+  pools <- executeWithResult (Cmd "zpool list -H -o name,health")
   let pools' =
         filter (not . T.isInfixOf "backup") $
         pickBy (T.isSuffixOf "ONLINE") pools
   print pools'
-  snapshots <- run "LANG=C zfs list -r -t snapshot -o name,creation"
+  snapshots <-
+    executeWithResult (Cmd "LANG=C zfs list -r -t snapshot -o name,creation")
   forM_ pools' $ \pool -> do
-    let snapshots' = pickBy (T.isPrefixOf pool) snapshots
-    print pool
-    execute $ Dry isDryrun $ "zfs snapshot -r " <> pool <> "@" <> T.pack d
+    let snapshots' = L.sort $ pickBy (T.isPrefixOf $ pool <> "@") snapshots
+    let original = safeHead snapshots'
+    let current = pool <> "@" <> T.pack d
+    let backupPool' = T.pack backupPool <> "/" <> pool
+    print $
+      T.intercalate " " [pool, T.pack $ show original, current, backupPool']
+    execute $ dryOrDo $ "zfs snapshot -r " <> current
+    let sendTarget = maybe "" (\orig -> "-i " <> orig <> " ") original
+    execute $
+      dryOrDo $
+      "zfs send " <> sendTarget <> current <> " | zfs recv -F " <> backupPool'
 eval (Check isDryrun diskOpt poolOpt) = do
   let diskF =
         case diskOpt of
           Just disk -> T.isPrefixOf $ T.pack disk <> " "
           Nothing   -> T.isInfixOf "disk"
-  disks <- run "lsblk"
+  disks <- executeWithResult (Cmd "lsblk")
   let disks' = pickBy diskF disks
   forM_ disks' $ \disk ->
     execute $
@@ -49,7 +61,7 @@ eval (Check isDryrun diskOpt poolOpt) = do
         case poolOpt of
           Just pool -> T.isSuffixOf (T.pack pool <> " ") x
           Nothing   -> True
-  pools <- run "zpool list -H -o health,name"
+  pools <- executeWithResult (Cmd "zpool list -H -o health,name")
   let pools' = pickBy poolF pools
   forM_ pools' $ \pool ->
     execute $
@@ -66,20 +78,15 @@ data Cmd
   | Cmds [Cmd]
   deriving (Show, Eq)
 
-execute (Cmd cmd)      = run' cmd
-execute (Dry True cmd) = execute (Cmd (convert True cmd))
+execute (Cmd cmd)      = shell cmd empty
+execute (Dry True cmd) = execute (Cmd ("echo Dryrun: \'" <> cmd <> "\'"))
 execute (Dry _ cmd)    = execute (Cmd cmd)
 execute (Cmds [h])     = execute h
 execute (Cmds (h:t))   = execute h .&&. execute (Cmds t)
 
-run cmd = fold (inshell cmd empty) F.list
-
-run' cmd = shell cmd empty
+executeWithResult (Cmd cmd) = fold (inshell cmd empty) F.list
 
 pickBy f = map (head . T.words) . filter f . map lineToText
 
-convert isDryrun cmd =
-  (if isDryrun
-     then "echo Dryrun:"
-     else "") <>
-  cmd
+safeHead []    = Nothing
+safeHead (h:_) = Just h
