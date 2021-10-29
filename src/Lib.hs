@@ -34,9 +34,9 @@ eval (Backup isDryrun backupPool keepSnapshots) = do
     executeWithResult (Cmd "LANG=C zfs list -r -t snapshot -o name,creation")
   forM_ pools' $ \pool -> do
     let latestBackupSnapshot =
-          safeLast $
-          L.sort $
-          pickBy (T.isPrefixOf $ backupPool' <> "/" <> pool <> "@") snapshots
+          safeLast .
+          L.sort .
+          pickBy (T.isPrefixOf $ backupPool' <> "/" <> pool <> "@") $ snapshots
     let latestTag = T.takeWhileEnd (/= '@') <$> latestBackupSnapshot
     let originalSnapshot =
           latestTag >>= \tag ->
@@ -50,11 +50,11 @@ eval (Backup isDryrun backupPool keepSnapshots) = do
       T.intercalate
         " "
         [ pool
-        , T.pack $ show originalSnapshot
+        , show' originalSnapshot
         , currentSnapshot
         , backupTargetPool
-        , T.pack $ show latestBackupSnapshot
-        , T.pack $ show latestTag
+        , show' latestBackupSnapshot
+        , show' latestTag
         ]
     execute $ dryOrDo $ "zfs snapshot -r " <> currentSnapshot
     let sendTarget = maybe "" (\orig -> "-I " <> orig <> " ") originalSnapshot
@@ -120,3 +120,5 @@ safeHead (h:_) = Just h
 
 safeLast [] = Nothing
 safeLast l  = Just $ last l
+
+show' = T.pack . show
