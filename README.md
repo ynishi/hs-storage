@@ -7,7 +7,7 @@
 ## run
 ### usage
 ```
-sudo stack run --allow-different-user
+sudo stack run --allow-different-user -- -h
 ```
 ### sample
 ```
