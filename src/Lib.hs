@@ -9,6 +9,7 @@ import qualified Control.Foldl      as F
 import           Control.Monad
 import qualified Data.List          as L
 import qualified Data.Maybe         as M
+import qualified Data.Ord           as O
 import qualified Data.Text          as T
 import           Data.Time.Calendar
 import           Data.Time.Clock
@@ -20,9 +21,10 @@ import           Turtle.Prelude
 runApp :: Opt -> IO ()
 runApp opt = eval (optCommand opt)
 
-eval (Backup isDryrun backupPool) = do
+eval (Backup isDryrun backupPool keepSnapshots) = do
   d <- Lib.date
   let dryOrDo = Dry isDryrun
+  let backupPool' = T.pack backupPool
   pools <- executeWithResult (Cmd "zpool list -H -o name,health")
   let pools' =
         filter (not . T.isInfixOf "backup") $
@@ -31,17 +33,41 @@ eval (Backup isDryrun backupPool) = do
   snapshots <-
     executeWithResult (Cmd "LANG=C zfs list -r -t snapshot -o name,creation")
   forM_ pools' $ \pool -> do
-    let snapshots' = L.sort $ pickBy (T.isPrefixOf $ pool <> "@") snapshots
-    let original = safeHead snapshots'
-    let current = pool <> "@" <> T.pack d
-    let backupPool' = T.pack backupPool <> "/" <> pool
+    let latestBackupSnapshot =
+          safeLast $
+          L.sort $
+          pickBy (T.isPrefixOf $ backupPool' <> "/" <> pool <> "@") snapshots
+    let latestTag = T.takeWhileEnd (/= '@') <$> latestBackupSnapshot
+    let originalSnapshot =
+          latestTag >>= \tag ->
+            safeLast .
+            L.sort .
+            filter (T.isSuffixOf tag) . pickBy (T.isPrefixOf (pool <> "@")) $
+            snapshots
+    let currentSnapshot = pool <> "@" <> T.pack d
+    let backupTargetPool = backupPool' <> "/" <> pool
     print $
-      T.intercalate " " [pool, T.pack $ show original, current, backupPool']
-    execute $ dryOrDo $ "zfs snapshot -r " <> current
-    let sendTarget = maybe "" (\orig -> "-i " <> orig <> " ") original
+      T.intercalate
+        " "
+        [ pool
+        , T.pack $ show originalSnapshot
+        , currentSnapshot
+        , backupTargetPool
+        , T.pack $ show latestBackupSnapshot
+        , T.pack $ show latestTag
+        ]
+    execute $ dryOrDo $ "zfs snapshot -r " <> currentSnapshot
+    let sendTarget = maybe "" (\orig -> "-I " <> orig <> " ") originalSnapshot
     execute $
       dryOrDo $
-      "zfs send " <> sendTarget <> current <> " | zfs recv -F " <> backupPool'
+      "zfs send " <> sendTarget <> currentSnapshot <> " | zfs recv -F " <>
+      backupTargetPool
+    forM_ pools' $ \pool -> do
+      let destroySnapshots =
+            L.drop keepSnapshots .
+            L.sortOn O.Down . pickBy (T.isPrefixOf (pool <> "@")) $
+            snapshots
+      forM_ destroySnapshots $ \ss -> execute . dryOrDo $ "zfs destroy " <> ss
 eval (Check isDryrun diskOpt poolOpt) = do
   let diskF =
         case diskOpt of
@@ -78,11 +104,12 @@ data Cmd
   | Cmds [Cmd]
   deriving (Show, Eq)
 
-execute (Cmd cmd)      = shell cmd empty
+execute (Cmd cmd) = shell cmd empty
 execute (Dry True cmd) = execute (Cmd ("echo Dryrun: \'" <> cmd <> "\'"))
-execute (Dry _ cmd)    = execute (Cmd cmd)
-execute (Cmds [h])     = execute h
-execute (Cmds (h:t))   = execute h .&&. execute (Cmds t)
+execute (Dry _ cmd) =
+  execute (Cmd ("echo Run: \'" <> cmd <> "\'")) .&&. execute (Cmd cmd)
+execute (Cmds [h]) = execute h
+execute (Cmds (h:t)) = execute h .&&. execute (Cmds t)
 
 executeWithResult (Cmd cmd) = fold (inshell cmd empty) F.list
 
@@ -90,3 +117,6 @@ pickBy f = map (head . T.words) . filter f . map lineToText
 
 safeHead []    = Nothing
 safeHead (h:_) = Just h
+
+safeLast [] = Nothing
+safeLast l  = Just $ last l

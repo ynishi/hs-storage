@@ -17,8 +17,9 @@ data Command
   = Check { isDryrun :: Bool
           , diskOpt  :: Maybe String
           , poolOpt  :: Maybe String }
-  | Backup { isDryrun   :: Bool
-           , backupPool :: String }
+  | Backup { isDryrun      :: Bool
+           , backupPool    :: String
+           , keepSnapshots :: Int }
 
 parse :: IO Opt
 parse = execParser opts
@@ -42,7 +43,11 @@ backupOptions =
   strOption
     (long "backupPool" <> short 'b' <> metavar "BACKUP_POOL" <>
      value "backup-tank" <>
-     help "set target backup pool for zfs recv")
+     help "set target backup pool for zfs recv") <*>
+  option
+    auto
+    (long "keepSnapshots" <> short 'k' <> metavar "INT" <> value 30 <>
+     help "set max number of snapshot keep")
 
 checkOptions :: Parser Command
 checkOptions =
