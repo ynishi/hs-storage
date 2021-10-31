@@ -46,8 +46,8 @@ backupOptions =
      help "set target backup pool for zfs recv") <*>
   option
     auto
-    (long "keepSnapshots" <> short 'k' <> metavar "INT" <> value 30 <>
-     help "set max number of snapshot keep")
+    (long "keepSnapshots" <> short 'k' <> metavar "INT" <> value 360 <>
+     help "set max number of snapshot keep(when no delete, set -1)")
 
 checkOptions :: Parser Command
 checkOptions =

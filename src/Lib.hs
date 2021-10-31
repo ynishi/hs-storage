@@ -35,8 +35,8 @@ eval (Backup isDryrun backupPool keepSnapshots) = do
   forM_ pools' $ \pool -> do
     let latestBackupSnapshot =
           safeLast .
-          L.sort .
-          pickBy (T.isPrefixOf $ backupPool' <> "/" <> pool <> "@") $ snapshots
+          L.sort . pickBy (T.isPrefixOf $ backupPool' <> "/" <> pool <> "@") $
+          snapshots
     let latestTag = T.takeWhileEnd (/= '@') <$> latestBackupSnapshot
     let originalSnapshot =
           latestTag >>= \tag ->
@@ -60,14 +60,14 @@ eval (Backup isDryrun backupPool keepSnapshots) = do
     let sendTarget = maybe "" (\orig -> "-I " <> orig <> " ") originalSnapshot
     execute $
       dryOrDo $
-      "zfs send " <> sendTarget <> currentSnapshot <> " | zfs recv -F " <>
+      "zfs send -R " <> sendTarget <> currentSnapshot <> " | zfs recv -F " <>
       backupTargetPool
+    let getDestroySnapshots' = getDestroySnapshots keepSnapshots snapshots
     forM_ pools' $ \pool -> do
-      let destroySnapshots =
-            L.drop keepSnapshots .
-            L.sortOn O.Down . pickBy (T.isPrefixOf (pool <> "@")) $
-            snapshots
-      forM_ destroySnapshots $ \ss -> execute . dryOrDo $ "zfs destroy " <> ss
+      let destroySnapshots = getDestroySnapshots' pool
+      let destroySnapshots' = getDestroySnapshots' (backupPool' <> "/" <> pool)
+      forM_ (destroySnapshots ++ destroySnapshots') $ \ss ->
+        execute . dryOrDo $ "zfs destroy " <> ss
 eval (Check isDryrun diskOpt poolOpt) = do
   let diskF =
         case diskOpt of
@@ -114,6 +114,11 @@ execute (Cmds (h:t)) = execute h .&&. execute (Cmds t)
 executeWithResult (Cmd cmd) = fold (inshell cmd empty) F.list
 
 pickBy f = map (head . T.words) . filter f . map lineToText
+
+getDestroySnapshots (-1) _ _ = []
+getDestroySnapshots keepSnapshots snapshots pool =
+  L.drop keepSnapshots . L.sortOn O.Down . pickBy (T.isPrefixOf (pool <> "@")) $
+  snapshots
 
 safeHead []    = Nothing
 safeHead (h:_) = Just h
