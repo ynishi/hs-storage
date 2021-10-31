@@ -4,6 +4,14 @@
 * zfs
 * smartctl
 
+## install bin
+```
+stack install
+# mv under global path
+sudo mv ${exec_path} /usr/local/bin/.
+# check
+sudo /usr/local/bin/hs-storage-exe -h
+```
 ## run
 ### usage
 ```
