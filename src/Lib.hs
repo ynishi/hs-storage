@@ -60,7 +60,7 @@ eval (Backup isDryrun backupPool keepSnapshots) = do
     let sendTarget = maybe "" (\orig -> "-I " <> orig <> " ") originalSnapshot
     execute $
       dryOrDo $
-      "zfs send " <> sendTarget <> currentSnapshot <> " | zfs recv -F " <>
+      "zfs send -R " <> sendTarget <> currentSnapshot <> " | zfs recv -F " <>
       backupTargetPool
     forM_ pools' $ \pool -> do
       let destroySnapshots =
